@@ -114,6 +114,7 @@
 #![feature(const_fmt_arguments_new)]
 #![feature(const_heap)]
 #![feature(const_convert)]
+#![feature(const_index_range_slice_index)]
 #![feature(const_inherent_unchecked_arith)]
 #![feature(const_int_unchecked_arith)]
 #![feature(const_intrinsic_forget)]
@@ -137,14 +138,17 @@
 #![feature(const_size_of_val)]
 #![feature(const_slice_from_raw_parts_mut)]
 #![feature(const_slice_ptr_len)]
+#![feature(const_slice_split_at_mut)]
 #![feature(const_str_from_utf8_unchecked_mut)]
 #![feature(const_swap)]
 #![feature(const_trait_impl)]
+#![feature(const_try)]
 #![feature(const_type_id)]
 #![feature(const_type_name)]
 #![feature(const_default_impls)]
 #![feature(const_unicode_case_lookup)]
 #![feature(const_unsafecell_get_mut)]
+#![feature(const_waker)]
 #![feature(core_panic)]
 #![feature(duration_consts_float)]
 #![feature(maybe_uninit_uninit_array)]
@@ -306,7 +310,6 @@ pub mod clone;
 pub mod cmp;
 pub mod convert;
 pub mod default;
-#[cfg(not(bootstrap))]
 pub mod error;
 pub mod marker;
 pub mod ops;
@@ -352,6 +355,8 @@ pub mod alloc;
 mod bool;
 mod tuple;
 mod unit;
+
+mod const_closure;
 
 #[stable(feature = "core_primitive", since = "1.43.0")]
 pub mod primitive;

@@ -35,6 +35,7 @@ mod into_iter_on_ref;
 mod is_digit_ascii_radix;
 mod iter_cloned_collect;
 mod iter_count;
+mod iter_kv_map;
 mod iter_next_slice;
 mod iter_nth;
 mod iter_nth_zero;
@@ -3036,6 +3037,37 @@ declare_clippy_lint! {
     "use of `File::read_to_end` or `File::read_to_string`"
 }
 
+declare_clippy_lint! {
+    /// ### What it does
+    ///
+    /// Checks for iterating a map (`HashMap` or `BTreeMap`) and
+    /// ignoring either the keys or values.
+    ///
+    /// ### Why is this bad?
+    ///
+    /// Readability. There are `keys` and `values` methods that
+    /// can be used to express that we only need the keys or the values.
+    ///
+    /// ### Example
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// let map: HashMap<u32, u32> = HashMap::new();
+    /// let values = map.iter().map(|(_, value)| value).collect::<Vec<_>>();
+    /// ```
+    ///
+    /// Use instead:
+    /// ```
+    /// # use std::collections::HashMap;
+    /// let map: HashMap<u32, u32> = HashMap::new();
+    /// let values = map.values().collect::<Vec<_>>();
+    /// ```
+    #[clippy::version = "1.65.0"]
+    pub ITER_KV_MAP,
+    complexity,
+    "iterating on map using `iter` when `keys` or `values` would do"
+}
+
 pub struct Methods {
     avoid_breaking_exported_api: bool,
     msrv: Option<RustcVersion>,
@@ -3159,6 +3191,7 @@ impl_lint_pass!(Methods => [
     UNNECESSARY_SORT_BY,
     VEC_RESIZE_TO_ZERO,
     VERBOSE_FILE_READS,
+    ITER_KV_MAP,
 ]);
 
 /// Extracts a method call name, args, and `Span` of the method name.
@@ -3217,7 +3250,7 @@ impl<'tcx> LateLintPass<'tcx> for Methods {
             return;
         }
         let name = impl_item.ident.name.as_str();
-        let parent = cx.tcx.hir().get_parent_item(impl_item.hir_id());
+        let parent = cx.tcx.hir().get_parent_item(impl_item.hir_id()).def_id;
         let item = cx.tcx.hir().expect_item(parent);
         let self_ty = cx.tcx.type_of(item.def_id);
 
@@ -3226,7 +3259,7 @@ impl<'tcx> LateLintPass<'tcx> for Methods {
             if let hir::ImplItemKind::Fn(ref sig, id) = impl_item.kind;
             if let Some(first_arg) = iter_input_pats(sig.decl, cx.tcx.hir().body(id)).next();
 
-            let method_sig = cx.tcx.fn_sig(impl_item.def_id);
+            let method_sig = cx.tcx.fn_sig(impl_item.def_id.def_id);
             let method_sig = cx.tcx.erase_late_bound_regions(method_sig);
 
             let first_arg_ty = method_sig.inputs().iter().next();
@@ -3236,7 +3269,7 @@ impl<'tcx> LateLintPass<'tcx> for Methods {
 
             then {
                 // if this impl block implements a trait, lint in trait definition instead
-                if !implements_trait && cx.access_levels.is_exported(impl_item.def_id) {
+                if !implements_trait && cx.access_levels.is_exported(impl_item.def_id.def_id) {
                     // check missing trait implementations
                     for method_config in &TRAIT_METHODS {
                         if name == method_config.method_name &&
@@ -3268,7 +3301,7 @@ impl<'tcx> LateLintPass<'tcx> for Methods {
 
                 if sig.decl.implicit_self.has_implicit_self()
                     && !(self.avoid_breaking_exported_api
-                        && cx.access_levels.is_exported(impl_item.def_id))
+                        && cx.access_levels.is_exported(impl_item.def_id.def_id))
                 {
                     wrong_self_convention::check(
                         cx,
@@ -3498,6 +3531,9 @@ impl Methods {
                 (name @ ("map" | "map_err"), [m_arg]) => {
                     if name == "map" {
                         map_clone::check(cx, expr, recv, m_arg, self.msrv);
+                        if let Some((map_name @ ("iter" | "into_iter"), recv2, _, _)) = method_call(recv) {
+                            iter_kv_map::check(cx, map_name, expr, recv2, m_arg);
+                        }
                     } else {
                         map_err_ignore::check(cx, expr, m_arg);
                     }

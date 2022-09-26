@@ -16,12 +16,12 @@ use rustc_index::bit_set::BitSet;
 use rustc_index::vec::IndexVec;
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::{
-    AssertKind, BinOp, Body, Constant, ConstantKind, Local, LocalDecl, Location, Operand, Place,
-    Rvalue, SourceInfo, SourceScope, SourceScopeData, Statement, StatementKind, Terminator,
+    self, AssertKind, BinOp, Body, Constant, ConstantKind, Local, LocalDecl, Location, Operand,
+    Place, Rvalue, SourceInfo, SourceScope, SourceScopeData, Statement, StatementKind, Terminator,
     TerminatorKind, UnOp, RETURN_PLACE,
 };
 use rustc_middle::ty::layout::{LayoutError, LayoutOf, LayoutOfHelpers, TyAndLayout};
-use rustc_middle::ty::subst::{InternalSubsts, Subst};
+use rustc_middle::ty::InternalSubsts;
 use rustc_middle::ty::{self, ConstInt, Instance, ParamEnv, ScalarInt, Ty, TyCtxt, TypeVisitable};
 use rustc_session::lint;
 use rustc_span::Span;
@@ -292,7 +292,7 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
             return None;
         }
 
-        match self.ecx.mir_const_to_op(&c.literal, None) {
+        match self.ecx.const_to_op(&c.literal, None) {
             Ok(op) => Some(op),
             Err(error) => {
                 let tcx = self.ecx.tcx.at(c.span);
@@ -301,7 +301,7 @@ impl<'mir, 'tcx> ConstPropagator<'mir, 'tcx> {
                     let lint_only = match c.literal {
                         ConstantKind::Ty(ct) => ct.needs_subst(),
                         ConstantKind::Unevaluated(
-                            ty::Unevaluated { def: _, substs: _, promoted: Some(_) },
+                            mir::UnevaluatedConst { def: _, substs: _, promoted: Some(_) },
                             _,
                         ) => {
                             // Promoteds must lint and not error as the user didn't ask for them

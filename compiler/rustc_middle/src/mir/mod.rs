@@ -9,10 +9,10 @@ use crate::mir::visit::MirVisitable;
 use crate::ty::codec::{TyDecoder, TyEncoder};
 use crate::ty::fold::{FallibleTypeFolder, TypeFoldable, TypeSuperFoldable};
 use crate::ty::print::{FmtPrinter, Printer};
-use crate::ty::subst::{GenericArg, InternalSubsts, Subst, SubstsRef};
 use crate::ty::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
 use crate::ty::{self, List, Ty, TyCtxt};
 use crate::ty::{AdtDef, InstanceDef, ScalarInt, UserTypeAnnotationIndex};
+use crate::ty::{GenericArg, InternalSubsts, SubstsRef};
 
 use rustc_data_structures::captures::Captures;
 use rustc_errors::ErrorGuaranteed;
@@ -1380,6 +1380,7 @@ impl<V, T> ProjectionElem<V, T> {
 
             Self::Field(_, _)
             | Self::Index(_)
+            | Self::OpaqueCast(_)
             | Self::ConstantIndex { .. }
             | Self::Subslice { .. }
             | Self::Downcast(_, _) => false,
@@ -1574,7 +1575,9 @@ impl Debug for Place<'_> {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
         for elem in self.projection.iter().rev() {
             match elem {
-                ProjectionElem::Downcast(_, _) | ProjectionElem::Field(_, _) => {
+                ProjectionElem::OpaqueCast(_)
+                | ProjectionElem::Downcast(_, _)
+                | ProjectionElem::Field(_, _) => {
                     write!(fmt, "(").unwrap();
                 }
                 ProjectionElem::Deref => {
@@ -1590,6 +1593,9 @@ impl Debug for Place<'_> {
 
         for elem in self.projection.iter() {
             match elem {
+                ProjectionElem::OpaqueCast(ty) => {
+                    write!(fmt, " as {})", ty)?;
+                }
                 ProjectionElem::Downcast(Some(name), _index) => {
                     write!(fmt, " as {})", name)?;
                 }
@@ -2049,7 +2055,7 @@ pub enum ConstantKind<'tcx> {
     Ty(ty::Const<'tcx>),
 
     /// An unevaluated mir constant which is not part of the type system.
-    Unevaluated(ty::Unevaluated<'tcx, Option<Promoted>>, Ty<'tcx>),
+    Unevaluated(UnevaluatedConst<'tcx>, Ty<'tcx>),
 
     /// This constant cannot go back into the type system, as it represents
     /// something the type system cannot handle (e.g. pointers).
@@ -2309,12 +2315,11 @@ impl<'tcx> ConstantKind<'tcx> {
             ty::InlineConstSubsts::new(tcx, ty::InlineConstSubstsParts { parent_substs, ty })
                 .substs;
 
-        let uneval = ty::Unevaluated {
+        let uneval = UnevaluatedConst {
             def: ty::WithOptConstParam::unknown(def_id).to_global(),
             substs,
             promoted: None,
         };
-
         debug_assert!(!uneval.has_free_regions());
 
         Self::Unevaluated(uneval, ty)
@@ -2398,7 +2403,7 @@ impl<'tcx> ConstantKind<'tcx> {
 
         let hir_id = tcx.hir().local_def_id_to_hir_id(def.did);
         let span = tcx.hir().span(hir_id);
-        let uneval = ty::Unevaluated::new(def.to_global(), substs);
+        let uneval = UnevaluatedConst::new(def.to_global(), substs);
         debug!(?span, ?param_env);
 
         match tcx.const_eval_resolve(param_env, uneval, Some(span)) {
@@ -2411,7 +2416,7 @@ impl<'tcx> ConstantKind<'tcx> {
                 // Error was handled in `const_eval_resolve`. Here we just create a
                 // new unevaluated const and error hard later in codegen
                 Self::Unevaluated(
-                    ty::Unevaluated {
+                    UnevaluatedConst {
                         def: def.to_global(),
                         substs: InternalSubsts::identity_for_item(tcx, def.did.to_def_id()),
                         promoted: None,
@@ -2431,6 +2436,34 @@ impl<'tcx> ConstantKind<'tcx> {
             ty::ConstKind::Unevaluated(uv) => Self::Unevaluated(uv.expand(), c.ty()),
             _ => Self::Ty(c),
         }
+    }
+}
+
+/// An unevaluated (potentially generic) constant used in MIR.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, TyEncodable, TyDecodable, Lift)]
+#[derive(Hash, HashStable)]
+pub struct UnevaluatedConst<'tcx> {
+    pub def: ty::WithOptConstParam<DefId>,
+    pub substs: SubstsRef<'tcx>,
+    pub promoted: Option<Promoted>,
+}
+
+impl<'tcx> UnevaluatedConst<'tcx> {
+    // FIXME: probably should get rid of this method. It's also wrong to
+    // shrink and then later expand a promoted.
+    #[inline]
+    pub fn shrink(self) -> ty::UnevaluatedConst<'tcx> {
+        ty::UnevaluatedConst { def: self.def, substs: self.substs }
+    }
+}
+
+impl<'tcx> UnevaluatedConst<'tcx> {
+    #[inline]
+    pub fn new(
+        def: ty::WithOptConstParam<DefId>,
+        substs: SubstsRef<'tcx>,
+    ) -> UnevaluatedConst<'tcx> {
+        UnevaluatedConst { def, substs, promoted: Default::default() }
     }
 }
 

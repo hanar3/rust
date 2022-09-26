@@ -7,7 +7,6 @@ use rustc_index::vec::Idx;
 use rustc_middle::middle::codegen_fn_attrs::{CodegenFnAttrFlags, CodegenFnAttrs};
 use rustc_middle::mir::visit::*;
 use rustc_middle::mir::*;
-use rustc_middle::ty::subst::Subst;
 use rustc_middle::ty::{self, Instance, InstanceDef, ParamEnv, Ty, TyCtxt};
 use rustc_session::config::OptLevel;
 use rustc_span::def_id::DefId;
@@ -606,7 +605,7 @@ impl<'tcx> Inliner<'tcx> {
                 caller_body.required_consts.extend(
                     callee_body.required_consts.iter().copied().filter(|&ct| match ct.literal {
                         ConstantKind::Ty(_) => {
-                            bug!("should never encounter ty::Unevaluated in `required_consts`")
+                            bug!("should never encounter ty::UnevaluatedConst in `required_consts`")
                         }
                         ConstantKind::Val(..) | ConstantKind::Unevaluated(..) => true,
                     }),

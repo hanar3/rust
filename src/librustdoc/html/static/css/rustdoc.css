@@ -141,10 +141,6 @@ h1, h2, h3, h4 {
 h1.fqn {
 	margin: 0;
 	padding: 0;
-	border-bottom-color: var(--headings-border-bottom-color);
-}
-h2, h3, h4 {
-	border-bottom-color: var(--headings-border-bottom-color);
 }
 .main-heading {
 	display: flex;
@@ -180,8 +176,8 @@ h4.code-header {
 	border-bottom-style: none;
 	margin: 0;
 	padding: 0;
-	margin-top: 0.6em;
-	margin-bottom: 0.4em;
+	margin-top: 0.6rem;
+	margin-bottom: 0.4rem;
 }
 .impl,
 .impl-items .method,
@@ -372,9 +368,6 @@ code, pre, a.test-arrow, .code-header {
 pre {
 	padding: 14px;
 }
-.docblock.item-decl {
-	margin-left: 0;
-}
 .item-decl pre {
 	overflow-x: auto;
 }
@@ -418,7 +411,7 @@ img {
 
 .sidebar {
 	font-size: 0.875rem;
-	width: 250px;
+	width: 200px;
 	min-width: 200px;
 	overflow-y: scroll;
 	position: sticky;
@@ -529,14 +522,6 @@ img {
 	width: 100px;
 }
 
-.location:empty {
-	border: none;
-}
-
-.location a:first-of-type {
-	font-weight: 500;
-}
-
 .block ul, .block li {
 	padding: 0;
 	margin: 0;
@@ -588,13 +573,9 @@ h2.location a {
 }
 
 .rustdoc .example-wrap {
-	display: inline-flex;
+	display: flex;
 	margin-bottom: 10px;
-}
-
-.example-wrap {
 	position: relative;
-	width: 100%;
 }
 
 .example-wrap > pre.line-number {
@@ -666,9 +647,6 @@ h2.location a {
 
 .docblock h5 { font-size: 1rem; }
 .docblock h6 { font-size: 0.875rem; }
-.docblock h1, .docblock h2, .docblock h3, .docblock h4, .docblock h5, .docblock h6 {
-	border-bottom-color: var(--headings-border-bottom-color);
-}
 
 .docblock {
 	margin-left: 24px;
@@ -680,19 +658,17 @@ h2.location a {
 	overflow-x: auto;
 }
 
-.content .out-of-band {
+.out-of-band {
 	flex-grow: 0;
 	font-size: 1.125rem;
 	font-weight: normal;
-	float: right;
 }
 
 .method > .code-header, .trait-impl > .code-header {
-	max-width: calc(100% - 41px);
 	display: block;
 }
 
-.content .in-band {
+.in-band {
 	flex-grow: 1;
 	margin: 0px;
 	padding: 0px;
@@ -703,10 +679,6 @@ h2.location a {
 	   more aggressively when we want them to. */
 	overflow-wrap: anywhere;
 	background-color: var(--main-background-color);
-}
-
-.in-band > code, .in-band > .code-header {
-	display: inline-block;
 }
 
 .docblock code, .docblock-short code,
@@ -742,10 +714,6 @@ pre, .rustdoc.source .example-wrap {
 	padding: 0;
 }
 
-.content > .methods > .method {
-	font-size: 1rem;
-	position: relative;
-}
 /* Shift "where ..." part of method or fn definition down a line */
 .content .method .where,
 .content .fn .where,
@@ -763,7 +731,6 @@ pre, .rustdoc.source .example-wrap {
 }
 
 .content .item-info {
-	position: relative;
 	margin-left: 24px;
 }
 
@@ -1096,14 +1063,16 @@ so that we can apply CSS-filters to change the arrow color in themes */
 	font-size: 0.875rem;
 	font-weight: normal;
 }
-.stab p {
-	display: inline;
-	margin: 0;
-}
 
 .stab .emoji {
 	font-size: 1.25rem;
 	margin-right: 0.3rem;
+}
+
+/* This is to prevent the `.stab` elements to overflow the .docblock elements. */
+.docblock .stab {
+	padding: 0 0.125em;
+	margin-bottom: 0;
 }
 
 /* Black one-pixel outline around emoji shapes */
@@ -1154,14 +1123,6 @@ so that we can apply CSS-filters to change the arrow color in themes */
 	/* Override header settings otherwise it's too bold */
 	font-weight: normal;
 	font-size: 1rem;
-}
-
-td.summary-column {
-	width: 100%;
-}
-
-.summary {
-	padding-right: 0px;
 }
 
 pre.rust .question-mark {
@@ -1442,7 +1403,6 @@ pre.rust {
 }
 #source-sidebar {
 	width: 100%;
-	z-index: 1;
 	overflow: auto;
 }
 #source-sidebar > .title {
@@ -1560,10 +1520,6 @@ kbd {
 
 ul.all-items > li {
 	list-style: none;
-}
-
-.non-exhaustive {
-	margin-bottom: 1em;
 }
 
 details.dir-entry {
@@ -1770,13 +1726,13 @@ in storage.js plus the media query with (min-width: 701px)
 		flex-direction: column;
 	}
 
-	.content .out-of-band {
+	.out-of-band {
 		text-align: left;
 		margin-left: initial;
 		padding: initial;
 	}
 
-	.content .out-of-band .since::before {
+	.out-of-band .since::before {
 		content: "Since ";
 	}
 
@@ -1952,14 +1908,6 @@ in storage.js plus the media query with (min-width: 701px)
 		border-bottom: 1px solid;
 	}
 
-	#source-sidebar {
-		z-index: 11;
-	}
-
-	#main-content > .line-numbers {
-		margin-top: 0;
-	}
-
 	.notable-traits .notable-traits-tooltiptext {
 		left: 0;
 		top: 100%;
@@ -2016,7 +1964,7 @@ in storage.js plus the media query with (min-width: 701px)
 }
 
 @media print {
-	nav.sidebar, nav.sub, .content .out-of-band, a.srclink, #copy-path,
+	nav.sidebar, nav.sub, .out-of-band, a.srclink, #copy-path,
 	details.rustdoc-toggle[open] > summary::before, details.rustdoc-toggle > summary::before,
 	details.rustdoc-toggle.top-doc > summary {
 		display: none;

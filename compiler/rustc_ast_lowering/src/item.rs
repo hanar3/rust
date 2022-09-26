@@ -1,4 +1,4 @@
-use super::errors::{InvalidAbi, MisplacedRelaxTraitBound};
+use super::errors::{InvalidAbi, InvalidAbiSuggestion, MisplacedRelaxTraitBound};
 use super::ResolverAstLoweringExt;
 use super::{Arena, AstOwner, ImplTraitContext, ImplTraitPosition};
 use super::{FnDeclKind, LoweringContext, ParamMode};
@@ -14,9 +14,10 @@ use rustc_hir::def_id::{LocalDefId, CRATE_DEF_ID};
 use rustc_hir::PredicateOrigin;
 use rustc_index::vec::{Idx, IndexVec};
 use rustc_middle::ty::{DefIdTree, ResolverAstLowering, TyCtxt};
+use rustc_span::lev_distance::find_best_match_for_name;
 use rustc_span::source_map::DesugaringKind;
 use rustc_span::symbol::{kw, sym, Ident};
-use rustc_span::Span;
+use rustc_span::{Span, Symbol};
 use rustc_target::spec::abi;
 use smallvec::{smallvec, SmallVec};
 
@@ -67,7 +68,7 @@ impl<'a, 'hir> ItemLowerer<'a, 'hir> {
             bodies: Vec::new(),
             attrs: SortedMap::default(),
             children: FxHashMap::default(),
-            current_hir_id_owner: CRATE_DEF_ID,
+            current_hir_id_owner: hir::CRATE_OWNER_ID,
             item_local_id_counter: hir::ItemLocalId::new(0),
             node_id_to_local_id: Default::default(),
             local_id_to_def_id: SortedMap::new(),
@@ -176,7 +177,8 @@ impl<'hir> LoweringContext<'_, 'hir> {
     }
 
     pub(super) fn lower_item_ref(&mut self, i: &Item) -> SmallVec<[hir::ItemId; 1]> {
-        let mut node_ids = smallvec![hir::ItemId { def_id: self.local_def_id(i.id) }];
+        let mut node_ids =
+            smallvec![hir::ItemId { def_id: hir::OwnerId { def_id: self.local_def_id(i.id) } }];
         if let ItemKind::Use(ref use_tree) = &i.kind {
             self.lower_item_id_use_tree(use_tree, i.id, &mut node_ids);
         }
@@ -192,7 +194,9 @@ impl<'hir> LoweringContext<'_, 'hir> {
         match tree.kind {
             UseTreeKind::Nested(ref nested_vec) => {
                 for &(ref nested, id) in nested_vec {
-                    vec.push(hir::ItemId { def_id: self.local_def_id(id) });
+                    vec.push(hir::ItemId {
+                        def_id: hir::OwnerId { def_id: self.local_def_id(id) },
+                    });
                     self.lower_item_id_use_tree(nested, id, vec);
                 }
             }
@@ -201,7 +205,9 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 for (_, &id) in
                     iter::zip(self.expect_full_res_from_use(base_id).skip(1), &[id1, id2])
                 {
-                    vec.push(hir::ItemId { def_id: self.local_def_id(id) });
+                    vec.push(hir::ItemId {
+                        def_id: hir::OwnerId { def_id: self.local_def_id(id) },
+                    });
                 }
             }
         }
@@ -552,7 +558,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                         }
 
                         let item = hir::Item {
-                            def_id: new_id,
+                            def_id: hir::OwnerId { def_id: new_id },
                             ident: this.lower_ident(ident),
                             kind,
                             vis_span,
@@ -626,7 +632,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                         }
 
                         let item = hir::Item {
-                            def_id: new_hir_id,
+                            def_id: hir::OwnerId { def_id: new_hir_id },
                             ident: this.lower_ident(ident),
                             kind,
                             vis_span,
@@ -688,7 +694,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
 
     fn lower_foreign_item_ref(&mut self, i: &ForeignItem) -> hir::ForeignItemRef {
         hir::ForeignItemRef {
-            id: hir::ForeignItemId { def_id: self.local_def_id(i.id) },
+            id: hir::ForeignItemId { def_id: hir::OwnerId { def_id: self.local_def_id(i.id) } },
             ident: self.lower_ident(i.ident),
             span: self.lower_span(i.span),
         }
@@ -850,7 +856,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
             }
             AssocItemKind::MacCall(..) => unimplemented!(),
         };
-        let id = hir::TraitItemId { def_id: self.local_def_id(i.id) };
+        let id = hir::TraitItemId { def_id: hir::OwnerId { def_id: self.local_def_id(i.id) } };
         hir::TraitItemRef {
             id,
             ident: self.lower_ident(i.ident),
@@ -930,7 +936,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
 
     fn lower_impl_item_ref(&mut self, i: &AssocItem) -> hir::ImplItemRef {
         hir::ImplItemRef {
-            id: hir::ImplItemId { def_id: self.local_def_id(i.id) },
+            id: hir::ImplItemId { def_id: hir::OwnerId { def_id: self.local_def_id(i.id) } },
             ident: self.lower_ident(i.ident),
             span: self.lower_span(i.span),
             kind: match &i.kind {
@@ -1049,9 +1055,9 @@ impl<'hir> LoweringContext<'_, 'hir> {
         asyncness: Async,
         body: Option<&Block>,
     ) -> hir::BodyId {
-        let closure_id = match asyncness {
-            Async::Yes { closure_id, .. } => closure_id,
-            Async::No => return self.lower_fn_body_block(span, decl, body),
+        let (closure_id, body) = match (asyncness, body) {
+            (Async::Yes { closure_id, .. }, Some(body)) => (closure_id, body),
+            _ => return self.lower_fn_body_block(span, decl, body),
         };
 
         self.lower_body(|this| {
@@ -1193,16 +1199,15 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 parameters.push(new_parameter);
             }
 
-            let body_span = body.map_or(span, |b| b.span);
             let async_expr = this.make_async_expr(
                 CaptureBy::Value,
                 closure_id,
                 None,
-                body_span,
+                body.span,
                 hir::AsyncGeneratorKind::Fn,
                 |this| {
                     // Create a block from the user's function body:
-                    let user_body = this.lower_block_expr_opt(body_span, body);
+                    let user_body = this.lower_block_expr(body);
 
                     // Transform into `drop-temps { <user-body> }`, an expression:
                     let desugared_span =
@@ -1234,7 +1239,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
 
             (
                 this.arena.alloc_from_iter(parameters),
-                this.expr(body_span, async_expr, AttrVec::new()),
+                this.expr(body.span, async_expr, AttrVec::new()),
             )
         })
     }
@@ -1280,10 +1285,19 @@ impl<'hir> LoweringContext<'_, 'hir> {
     }
 
     fn error_on_invalid_abi(&self, abi: StrLit) {
+        let abi_names = abi::enabled_names(self.tcx.features(), abi.span)
+            .iter()
+            .map(|s| Symbol::intern(s))
+            .collect::<Vec<_>>();
+        let suggested_name = find_best_match_for_name(&abi_names, abi.symbol_unescaped, None);
         self.tcx.sess.emit_err(InvalidAbi {
+            abi: abi.symbol_unescaped,
             span: abi.span,
-            abi: abi.symbol,
-            valid_abis: abi::all_names().join(", "),
+            suggestion: suggested_name.map(|suggested_name| InvalidAbiSuggestion {
+                span: abi.span,
+                suggestion: format!("\"{suggested_name}\""),
+            }),
+            command: "rustc --print=calling-conventions".to_string(),
         });
     }
 

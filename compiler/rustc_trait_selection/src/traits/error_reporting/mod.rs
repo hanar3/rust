@@ -1540,6 +1540,9 @@ impl<'a, 'tcx> InferCtxtPrivExt<'a, 'tcx> for InferCtxt<'a, 'tcx> {
                 }
                 diag.emit();
             }
+            FulfillmentErrorCode::CodeCycle(ref cycle) => {
+                self.report_overflow_error_cycle(cycle);
+            }
         }
     }
 
@@ -1895,7 +1898,9 @@ impl<'a, 'tcx> InferCtxtPrivExt<'a, 'tcx> for InferCtxt<'a, 'tcx> {
                         // FIXME(compiler-errors): This could be generalized, both to
                         // be more granular, and probably look past other `#[fundamental]`
                         // types, too.
-                        self.tcx.visibility(def.did()).is_accessible_from(body_id.owner, self.tcx)
+                        self.tcx
+                            .visibility(def.did())
+                            .is_accessible_from(body_id.owner.def_id, self.tcx)
                     } else {
                         true
                     }

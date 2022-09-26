@@ -73,7 +73,7 @@ pub use self::closure::{
     CAPTURE_STRUCT_LOCAL,
 };
 pub use self::consts::{
-    Const, ConstInt, ConstKind, ConstS, InferConst, ScalarInt, Unevaluated, ValTree,
+    Const, ConstInt, ConstKind, ConstS, InferConst, ScalarInt, UnevaluatedConst, ValTree,
 };
 pub use self::context::{
     tls, CanonicalUserType, CanonicalUserTypeAnnotation, CanonicalUserTypeAnnotations,
@@ -89,9 +89,9 @@ pub use self::sty::BoundRegionKind::*;
 pub use self::sty::{
     Article, Binder, BoundRegion, BoundRegionKind, BoundTy, BoundTyKind, BoundVar,
     BoundVariableKind, CanonicalPolyFnSig, ClosureSubsts, ClosureSubstsParts, ConstVid,
-    EarlyBinder, EarlyBoundRegion, ExistentialPredicate, ExistentialProjection,
-    ExistentialTraitRef, FnSig, FreeRegion, GenSig, GeneratorSubsts, GeneratorSubstsParts,
-    InlineConstSubsts, InlineConstSubstsParts, ParamConst, ParamTy, PolyExistentialProjection,
+    EarlyBoundRegion, ExistentialPredicate, ExistentialProjection, ExistentialTraitRef, FnSig,
+    FreeRegion, GenSig, GeneratorSubsts, GeneratorSubstsParts, InlineConstSubsts,
+    InlineConstSubstsParts, ParamConst, ParamTy, PolyExistentialProjection,
     PolyExistentialTraitRef, PolyFnSig, PolyGenSig, PolyTraitRef, ProjectionTy, Region, RegionKind,
     RegionVid, TraitRef, TyKind, TypeAndMut, UpvarSubsts, VarianceDiagInfo,
 };
@@ -682,7 +682,7 @@ pub enum PredicateKind<'tcx> {
     Coerce(CoercePredicate<'tcx>),
 
     /// Constant initializer must evaluate successfully.
-    ConstEvaluatable(ty::Unevaluated<'tcx, ()>),
+    ConstEvaluatable(ty::UnevaluatedConst<'tcx>),
 
     /// Constants must be equal. The first component is the const that is expected.
     ConstEquate(Const<'tcx>, Const<'tcx>),
@@ -860,6 +860,11 @@ impl<'tcx> TraitPredicate<'tcx> {
             | (BoundConstness::ConstIfConst, hir::Constness::Const) => true,
             (BoundConstness::ConstIfConst, hir::Constness::NotConst) => false,
         }
+    }
+
+    pub fn without_const(mut self) -> Self {
+        self.constness = BoundConstness::NotConst;
+        self
     }
 }
 

@@ -81,6 +81,7 @@ impl<T: ?Sized> !Send for *mut T {}
 /// ```
 ///
 /// [trait object]: ../../book/ch17-02-trait-objects.html
+#[doc(alias = "?", alias = "?Sized")]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[lang = "sized"]
 #[rustc_on_unimplemented(
@@ -805,7 +806,7 @@ pub trait Destruct {}
 /// The implementation of this trait is built-in and cannot be implemented
 /// for any user type.
 #[unstable(feature = "tuple_trait", issue = "none")]
-#[cfg_attr(not(bootstrap), lang = "tuple_trait")]
+#[lang = "tuple_trait"]
 #[rustc_on_unimplemented(message = "`{Self}` is not a tuple")]
 pub trait Tuple {}
 

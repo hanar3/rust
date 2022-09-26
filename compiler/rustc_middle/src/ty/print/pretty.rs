@@ -1,9 +1,9 @@
 use crate::mir::interpret::{AllocRange, GlobalAlloc, Pointer, Provenance, Scalar};
-use crate::ty::subst::{GenericArg, GenericArgKind, Subst};
 use crate::ty::{
     self, ConstInt, DefIdTree, ParamConst, ScalarInt, Term, TermKind, Ty, TyCtxt, TypeFoldable,
     TypeSuperFoldable, TypeSuperVisitable, TypeVisitable,
 };
+use crate::ty::{GenericArg, GenericArgKind};
 use rustc_apfloat::ieee::{Double, Single};
 use rustc_data_structures::fx::{FxHashMap, FxIndexMap};
 use rustc_data_structures::sso::SsoHashSet;
@@ -1088,17 +1088,9 @@ pub trait PrettyPrinter<'tcx>:
                         .generics_of(principal.def_id)
                         .own_substs_no_defaults(cx.tcx(), principal.substs);
 
-                    // Don't print `'_` if there's no unerased regions.
-                    let print_regions = args.iter().any(|arg| match arg.unpack() {
-                        GenericArgKind::Lifetime(r) => !r.is_erased(),
-                        _ => false,
-                    });
-                    let mut args = args.iter().cloned().filter(|arg| match arg.unpack() {
-                        GenericArgKind::Lifetime(_) => print_regions,
-                        _ => true,
-                    });
                     let mut projections = predicates.projection_bounds();
 
+                    let mut args = args.iter().cloned();
                     let arg0 = args.next();
                     let projection0 = projections.next();
                     if arg0.is_some() || projection0.is_some() {
@@ -1201,9 +1193,7 @@ pub trait PrettyPrinter<'tcx>:
         }
 
         match ct.kind() {
-            ty::ConstKind::Unevaluated(ty::Unevaluated { def, substs, promoted }) => {
-                assert_eq!(promoted, ());
-
+            ty::ConstKind::Unevaluated(ty::UnevaluatedConst { def, substs }) => {
                 match self.tcx().def_kind(def.did) {
                     DefKind::Static(..) | DefKind::Const | DefKind::AssocConst => {
                         p!(print_value_path(def.did, substs))
@@ -1572,7 +1562,9 @@ pub struct FmtPrinterData<'a, 'tcx> {
     in_value: bool,
     pub print_alloc_ids: bool,
 
+    // set of all named (non-anonymous) region names
     used_region_names: FxHashSet<Symbol>,
+
     region_index: usize,
     binder_depth: usize,
     printed_type_count: usize,
@@ -1847,22 +1839,11 @@ impl<'tcx> Printer<'tcx> for FmtPrinter<'_, 'tcx> {
     ) -> Result<Self::Path, Self::Error> {
         self = print_prefix(self)?;
 
-        // Don't print `'_` if there's no unerased regions.
-        let print_regions = self.tcx.sess.verbose()
-            || args.iter().any(|arg| match arg.unpack() {
-                GenericArgKind::Lifetime(r) => !r.is_erased(),
-                _ => false,
-            });
-        let args = args.iter().cloned().filter(|arg| match arg.unpack() {
-            GenericArgKind::Lifetime(_) => print_regions,
-            _ => true,
-        });
-
-        if args.clone().next().is_some() {
+        if args.first().is_some() {
             if self.in_value {
                 write!(self, "::")?;
             }
-            self.generic_delimiters(|cx| cx.comma_sep(args))
+            self.generic_delimiters(|cx| cx.comma_sep(args.iter().cloned()))
         } else {
             Ok(self)
         }
@@ -2139,13 +2120,19 @@ impl<'tcx> FmtPrinter<'_, 'tcx> {
     where
         T: Print<'tcx, Self, Output = Self, Error = fmt::Error> + TypeFoldable<'tcx>,
     {
-        fn name_by_region_index(index: usize) -> Symbol {
-            match index {
-                0 => Symbol::intern("'r"),
-                1 => Symbol::intern("'s"),
-                i => Symbol::intern(&format!("'t{}", i - 2)),
+        fn name_by_region_index(
+            index: usize,
+            available_names: &mut Vec<Symbol>,
+            num_available: usize,
+        ) -> Symbol {
+            if let Some(name) = available_names.pop() {
+                name
+            } else {
+                Symbol::intern(&format!("'z{}", index - num_available))
             }
         }
+
+        debug!("name_all_regions");
 
         // Replace any anonymous late-bound regions with named
         // variants, using new unique identifiers, so that we can
@@ -2153,8 +2140,10 @@ impl<'tcx> FmtPrinter<'_, 'tcx> {
         // the output. We'll probably want to tweak this over time to
         // decide just how much information to give.
         if self.binder_depth == 0 {
-            self.prepare_late_bound_region_info(value);
+            self.prepare_region_info(value);
         }
+
+        debug!("self.used_region_names: {:?}", &self.used_region_names);
 
         let mut empty = true;
         let mut start_or_continue = |cx: &mut Self, start: &str, cont: &str| {
@@ -2172,13 +2161,24 @@ impl<'tcx> FmtPrinter<'_, 'tcx> {
 
         define_scoped_cx!(self);
 
+        let possible_names =
+            ('a'..='z').rev().map(|s| Symbol::intern(&format!("'{s}"))).collect::<Vec<_>>();
+
+        let mut available_names = possible_names
+            .into_iter()
+            .filter(|name| !self.used_region_names.contains(&name))
+            .collect::<Vec<_>>();
+        debug!(?available_names);
+        let num_available = available_names.len();
+
         let mut region_index = self.region_index;
-        let mut next_name = |this: &Self| loop {
-            let name = name_by_region_index(region_index);
+        let mut next_name = |this: &Self| {
+            let name = name_by_region_index(region_index, &mut available_names, num_available);
+            debug!(?name);
             region_index += 1;
-            if !this.used_region_names.contains(&name) {
-                break name;
-            }
+            assert!(!this.used_region_names.contains(&name));
+
+            name
         };
 
         // If we want to print verbosely, then print *all* binders, even if they
@@ -2199,6 +2199,7 @@ impl<'tcx> FmtPrinter<'_, 'tcx> {
                         ty::BrAnon(_) | ty::BrEnv => {
                             start_or_continue(&mut self, "for<", ", ");
                             let name = next_name(&self);
+                            debug!(?name);
                             do_continue(&mut self, name);
                             ty::BrNamed(CRATE_DEF_ID.to_def_id(), name)
                         }
@@ -2292,29 +2293,37 @@ impl<'tcx> FmtPrinter<'_, 'tcx> {
         Ok(inner)
     }
 
-    fn prepare_late_bound_region_info<T>(&mut self, value: &ty::Binder<'tcx, T>)
+    fn prepare_region_info<T>(&mut self, value: &ty::Binder<'tcx, T>)
     where
         T: TypeVisitable<'tcx>,
     {
-        struct LateBoundRegionNameCollector<'a, 'tcx> {
-            used_region_names: &'a mut FxHashSet<Symbol>,
+        struct RegionNameCollector<'tcx> {
+            used_region_names: FxHashSet<Symbol>,
             type_collector: SsoHashSet<Ty<'tcx>>,
         }
 
-        impl<'tcx> ty::visit::TypeVisitor<'tcx> for LateBoundRegionNameCollector<'_, 'tcx> {
+        impl<'tcx> RegionNameCollector<'tcx> {
+            fn new() -> Self {
+                RegionNameCollector {
+                    used_region_names: Default::default(),
+                    type_collector: SsoHashSet::new(),
+                }
+            }
+        }
+
+        impl<'tcx> ty::visit::TypeVisitor<'tcx> for RegionNameCollector<'tcx> {
             type BreakTy = ();
 
             fn visit_region(&mut self, r: ty::Region<'tcx>) -> ControlFlow<Self::BreakTy> {
                 trace!("address: {:p}", r.0.0);
-                if let ty::ReLateBound(_, ty::BoundRegion { kind: ty::BrNamed(_, name), .. }) = *r {
-                    self.used_region_names.insert(name);
-                } else if let ty::RePlaceholder(ty::PlaceholderRegion {
-                    name: ty::BrNamed(_, name),
-                    ..
-                }) = *r
-                {
+
+                // Collect all named lifetimes. These allow us to prevent duplication
+                // of already existing lifetime names when introducing names for
+                // anonymous late-bound regions.
+                if let Some(name) = r.get_name() {
                     self.used_region_names.insert(name);
                 }
+
                 r.super_visit_with(self)
             }
 
@@ -2330,12 +2339,9 @@ impl<'tcx> FmtPrinter<'_, 'tcx> {
             }
         }
 
-        self.used_region_names.clear();
-        let mut collector = LateBoundRegionNameCollector {
-            used_region_names: &mut self.used_region_names,
-            type_collector: SsoHashSet::new(),
-        };
+        let mut collector = RegionNameCollector::new();
         value.visit_with(&mut collector);
+        self.used_region_names = collector.used_region_names;
         self.region_index = 0;
     }
 }

@@ -3,6 +3,7 @@
 
 pub use crate::options::*;
 
+use crate::errors::TargetDataLayoutErrorsWrapper;
 use crate::search_paths::SearchPath;
 use crate::utils::{CanonicalizedPath, NativeLib, NativeLibKind};
 use crate::{early_error, early_warn, Session};
@@ -537,6 +538,7 @@ pub enum PrintRequest {
     TargetLibdir,
     CrateName,
     Cfg,
+    CallingConventions,
     TargetList,
     TargetCPUs,
     TargetFeatures,
@@ -898,7 +900,7 @@ fn default_configuration(sess: &Session) -> CrateConfig {
     let max_atomic_width = sess.target.max_atomic_width();
     let atomic_cas = sess.target.atomic_cas;
     let layout = TargetDataLayout::parse(&sess.target).unwrap_or_else(|err| {
-        sess.emit_fatal(err);
+        sess.emit_fatal(TargetDataLayoutErrorsWrapper(err));
     });
 
     let mut ret = CrateConfig::default();
@@ -1353,8 +1355,8 @@ pub fn rustc_short_optgroups() -> Vec<RustcOptGroup> {
             "",
             "print",
             "Compiler information to print on stdout",
-            "[crate-name|file-names|sysroot|target-libdir|cfg|target-list|\
-             target-cpus|target-features|relocation-models|code-models|\
+            "[crate-name|file-names|sysroot|target-libdir|cfg|calling-conventions|\
+             target-list|target-cpus|target-features|relocation-models|code-models|\
              tls-models|target-spec-json|native-static-libs|stack-protector-strategies|\
              link-args]",
         ),
@@ -1793,6 +1795,7 @@ fn collect_print_requests(
         "sysroot" => PrintRequest::Sysroot,
         "target-libdir" => PrintRequest::TargetLibdir,
         "cfg" => PrintRequest::Cfg,
+        "calling-conventions" => PrintRequest::CallingConventions,
         "target-list" => PrintRequest::TargetList,
         "target-cpus" => PrintRequest::TargetCPUs,
         "target-features" => PrintRequest::TargetFeatures,

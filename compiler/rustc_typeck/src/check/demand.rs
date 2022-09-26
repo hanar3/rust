@@ -375,7 +375,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
                     let field_is_local = sole_field.did.is_local();
                     let field_is_accessible =
-                        sole_field.vis.is_accessible_from(expr.hir_id.owner, self.tcx)
+                        sole_field.vis.is_accessible_from(expr.hir_id.owner.def_id, self.tcx)
                         // Skip suggestions for unstable public fields (for example `Pin::pointer`)
                         && matches!(self.tcx.eval_stability(sole_field.did, None, expr.span, None), EvalResult::Allow | EvalResult::Unmarked);
 
@@ -416,6 +416,16 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     // unit variants don't have fields
                     hir::def::CtorKind::Const => unreachable!(),
                 };
+
+                // Suggest constructor as deep into the block tree as possible.
+                // This fixes https://github.com/rust-lang/rust/issues/101065,
+                // and also just helps make the most minimal suggestions.
+                let mut expr = expr;
+                while let hir::ExprKind::Block(block, _) = &expr.kind
+                    && let Some(expr_) = &block.expr
+                {
+                    expr = expr_
+                }
 
                 vec![
                     (expr.span.shrink_to_lo(), format!("{prefix}{variant}{open}")),

@@ -708,6 +708,7 @@ impl<'a> Builder<'a> {
             Kind::Dist => describe!(
                 dist::Docs,
                 dist::RustcDocs,
+                dist::JsonDocs,
                 dist::Mingw,
                 dist::Rustc,
                 dist::Std,
@@ -723,6 +724,7 @@ impl<'a> Builder<'a> {
                 dist::Miri,
                 dist::LlvmTools,
                 dist::RustDev,
+                dist::Bootstrap,
                 dist::Extended,
                 // It seems that PlainSourceTarball somehow changes how some of the tools
                 // perceive their dependencies (see #93033) which would invalidate fingerprints
@@ -1325,6 +1327,9 @@ impl<'a> Builder<'a> {
     ) -> Cargo {
         let mut cargo = Command::new(&self.initial_cargo);
         let out_dir = self.stage_out(compiler, mode);
+        // Run cargo from the source root so it can find .cargo/config.
+        // This matters when using vendoring and the working directory is outside the repository.
+        cargo.current_dir(&self.src);
 
         // Codegen backends are not yet tracked by -Zbinary-dep-depinfo,
         // so we need to explicitly clear out if they've been updated.
@@ -1552,13 +1557,12 @@ impl<'a> Builder<'a> {
         match mode {
             Mode::ToolBootstrap => {
                 // Restrict the allowed features to those passed by rustbuild, so we don't depend on nightly accidentally.
-                // HACK: because anyhow does feature detection in build.rs, we need to allow the backtrace feature too.
-                rustflags.arg("-Zallow-features=binary-dep-depinfo,backtrace");
+                rustflags.arg("-Zallow-features=binary-dep-depinfo");
             }
             Mode::ToolStd => {
                 // Right now this is just compiletest and a few other tools that build on stable.
                 // Allow them to use `feature(test)`, but nothing else.
-                rustflags.arg("-Zallow-features=binary-dep-depinfo,test,backtrace,proc_macro_internals,proc_macro_diagnostic,proc_macro_span");
+                rustflags.arg("-Zallow-features=binary-dep-depinfo,test,proc_macro_internals,proc_macro_diagnostic,proc_macro_span");
             }
             Mode::Std | Mode::Rustc | Mode::Codegen | Mode::ToolRustc => {}
         }

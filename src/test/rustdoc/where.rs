@@ -1,5 +1,7 @@
 #![crate_name = "foo"]
 
+use std::io::Lines;
+
 pub trait MyTrait { fn dummy(&self) { } }
 
 // @has foo/struct.Alpha.html '//pre' "pub struct Alpha<A>(_)where A: MyTrait"
@@ -11,7 +13,7 @@ pub fn charlie<C>() where C: MyTrait {}
 
 pub struct Delta<D>(D);
 
-// @has foo/struct.Delta.html '//*[@class="impl has-srclink"]//h3[@class="code-header in-band"]' \
+// @has foo/struct.Delta.html '//*[@class="impl has-srclink"]//h3[@class="code-header"]' \
 //          "impl<D> Delta<D>where D: MyTrait"
 impl<D> Delta<D> where D: MyTrait {
     pub fn delta() {}
@@ -20,28 +22,38 @@ impl<D> Delta<D> where D: MyTrait {
 pub struct Echo<E>(E);
 
 // @has 'foo/struct.Simd.html'
-// @snapshot SWhere_Simd_item-decl - '//div[@class="docblock item-decl"]'
+// @snapshot SWhere_Simd_item-decl - '//div[@class="item-decl"]'
 pub struct Simd<T>([T; 1])
 where
     T: MyTrait;
 
 // @has 'foo/trait.TraitWhere.html'
-// @snapshot SWhere_TraitWhere_item-decl - '//div[@class="docblock item-decl"]'
+// @snapshot SWhere_TraitWhere_item-decl - '//div[@class="item-decl"]'
 pub trait TraitWhere {
     type Item<'a> where Self: 'a;
+
+    fn func(self)
+    where
+        Self: Sized
+    {}
+
+    fn lines(self) -> Lines<Self>
+    where
+        Self: Sized,
+    { todo!() }
 }
 
-// @has foo/struct.Echo.html '//*[@class="impl has-srclink"]//h3[@class="code-header in-band"]' \
+// @has foo/struct.Echo.html '//*[@class="impl has-srclink"]//h3[@class="code-header"]' \
 //          "impl<E> MyTrait for Echo<E>where E: MyTrait"
-// @has foo/trait.MyTrait.html '//*[@id="implementors-list"]//h3[@class="code-header in-band"]' \
+// @has foo/trait.MyTrait.html '//*[@id="implementors-list"]//h3[@class="code-header"]' \
 //          "impl<E> MyTrait for Echo<E>where E: MyTrait"
 impl<E> MyTrait for Echo<E>where E: MyTrait {}
 
 pub enum Foxtrot<F> { Foxtrot1(F) }
 
-// @has foo/enum.Foxtrot.html '//*[@class="impl has-srclink"]//h3[@class="code-header in-band"]' \
+// @has foo/enum.Foxtrot.html '//*[@class="impl has-srclink"]//h3[@class="code-header"]' \
 //          "impl<F> MyTrait for Foxtrot<F>where F: MyTrait"
-// @has foo/trait.MyTrait.html '//*[@id="implementors-list"]//h3[@class="code-header in-band"]' \
+// @has foo/trait.MyTrait.html '//*[@id="implementors-list"]//h3[@class="code-header"]' \
 //          "impl<F> MyTrait for Foxtrot<F>where F: MyTrait"
 impl<F> MyTrait for Foxtrot<F>where F: MyTrait {}
 

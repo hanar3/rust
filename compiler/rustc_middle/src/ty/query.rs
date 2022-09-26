@@ -1,6 +1,6 @@
 use crate::dep_graph;
 use crate::infer::canonical::{self, Canonical};
-use crate::lint::LintExpectation;
+use crate::lint::LintLevelMap;
 use crate::metadata::ModChild;
 use crate::middle::codegen_fn_attrs::CodegenFnAttrs;
 use crate::middle::exported_symbols::{ExportedSymbol, SymbolExportInfo};
@@ -44,14 +44,13 @@ use rustc_errors::ErrorGuaranteed;
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, DefIdSet, LocalDefId};
-use rustc_hir::hir_id::HirId;
+use rustc_hir::hir_id::OwnerId;
 use rustc_hir::lang_items::{LangItem, LanguageItems};
 use rustc_hir::{Crate, ItemLocalId, TraitCandidate};
 use rustc_index::{bit_set::FiniteBitSet, vec::IndexVec};
 use rustc_session::config::{EntryFnType, OptLevel, OutputFilenames, SymbolManglingVersion};
 use rustc_session::cstore::{CrateDepKind, CrateSource};
 use rustc_session::cstore::{ExternCrate, ForeignModule, LinkagePreference, NativeLib};
-use rustc_session::lint::LintExpectationId;
 use rustc_session::utils::NativeLibKind;
 use rustc_session::Limits;
 use rustc_span::symbol::Symbol;
@@ -338,7 +337,7 @@ macro_rules! define_callbacks {
 rustc_query_append! { define_callbacks! }
 
 mod sealed {
-    use super::{DefId, LocalDefId};
+    use super::{DefId, LocalDefId, OwnerId};
 
     /// An analogue of the `Into` trait that's intended only for query parameters.
     ///
@@ -363,6 +362,13 @@ mod sealed {
     }
 
     impl IntoQueryParam<DefId> for LocalDefId {
+        #[inline(always)]
+        fn into_query_param(self) -> DefId {
+            self.to_def_id()
+        }
+    }
+
+    impl IntoQueryParam<DefId> for OwnerId {
         #[inline(always)]
         fn into_query_param(self) -> DefId {
             self.to_def_id()

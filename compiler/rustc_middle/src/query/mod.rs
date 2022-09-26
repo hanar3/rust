@@ -73,7 +73,7 @@ rustc_queries! {
     ///
     /// This can be conveniently accessed by methods on `tcx.hir()`.
     /// Avoid calling this query directly.
-    query hir_owner(key: LocalDefId) -> Option<crate::hir::Owner<'tcx>> {
+    query hir_owner(key: hir::OwnerId) -> Option<crate::hir::Owner<'tcx>> {
         desc { |tcx| "HIR owner of `{}`", tcx.def_path_str(key.to_def_id()) }
     }
 
@@ -89,7 +89,7 @@ rustc_queries! {
     ///
     /// This can be conveniently accessed by methods on `tcx.hir()`.
     /// Avoid calling this query directly.
-    query hir_owner_parent(key: LocalDefId) -> hir::HirId {
+    query hir_owner_parent(key: hir::OwnerId) -> hir::HirId {
         desc { |tcx| "HIR parent of `{}`", tcx.def_path_str(key.to_def_id()) }
     }
 
@@ -97,7 +97,7 @@ rustc_queries! {
     ///
     /// This can be conveniently accessed by methods on `tcx.hir()`.
     /// Avoid calling this query directly.
-    query hir_owner_nodes(key: LocalDefId) -> hir::MaybeOwner<&'tcx hir::OwnerNodes<'tcx>> {
+    query hir_owner_nodes(key: hir::OwnerId) -> hir::MaybeOwner<&'tcx hir::OwnerNodes<'tcx>> {
         desc { |tcx| "HIR owner items in `{}`", tcx.def_path_str(key.to_def_id()) }
     }
 
@@ -105,7 +105,7 @@ rustc_queries! {
     ///
     /// This can be conveniently accessed by methods on `tcx.hir()`.
     /// Avoid calling this query directly.
-    query hir_attrs(key: LocalDefId) -> &'tcx hir::AttributeMap<'tcx> {
+    query hir_attrs(key: hir::OwnerId) -> &'tcx hir::AttributeMap<'tcx> {
         desc { |tcx| "HIR owner attributes in `{}`", tcx.def_path_str(key.to_def_id()) }
     }
 
@@ -274,14 +274,10 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    query shallow_lint_levels_on(key: HirId) -> rustc_middle::lint::ShallowLintLevelMap {
+    query lint_levels(_: ()) -> LintLevelMap {
         arena_cache
-        desc { |tcx| "looking up lint levels for `{}`", key }
-    }
-
-    query lint_expectations(_: ()) -> Vec<(LintExpectationId, LintExpectation)> {
-        arena_cache
-        desc { "computing `#[expect]`ed lints in this crate" }
+        eval_always
+        desc { "computing the lint levels for items in this crate" }
     }
 
     query parent_module_from_def_id(key: LocalDefId) -> LocalDefId {
@@ -381,7 +377,7 @@ rustc_queries! {
     }
 
     query try_unify_abstract_consts(key:
-        ty::ParamEnvAnd<'tcx, (ty::Unevaluated<'tcx, ()>, ty::Unevaluated<'tcx, ()>
+        ty::ParamEnvAnd<'tcx, (ty::UnevaluatedConst<'tcx>, ty::UnevaluatedConst<'tcx>
     )>) -> bool {
         desc {
             |tcx| "trying to unify the generic constants {} and {}",
@@ -1007,7 +1003,9 @@ rustc_queries! {
 
     /// Tries to destructure an `mir::ConstantKind` ADT or array into its variant index
     /// and its field values.
-    query try_destructure_mir_constant(key: ty::ParamEnvAnd<'tcx, mir::ConstantKind<'tcx>>) -> Option<mir::DestructuredMirConstant<'tcx>> {
+    query try_destructure_mir_constant(
+        key: ty::ParamEnvAnd<'tcx, mir::ConstantKind<'tcx>>
+    ) -> Option<mir::DestructuredConstant<'tcx>> {
         desc { "destructuring mir constant"}
         remap_env_constness
     }
@@ -1406,7 +1404,7 @@ rustc_queries! {
     query specializes(_: (DefId, DefId)) -> bool {
         desc { "computing whether impls specialize one another" }
     }
-    query in_scope_traits_map(_: LocalDefId)
+    query in_scope_traits_map(_: hir::OwnerId)
         -> Option<&'tcx FxHashMap<ItemLocalId, Box<[TraitCandidate]>>> {
         desc { "traits in scope at a block" }
     }
@@ -1421,7 +1419,7 @@ rustc_queries! {
         separate_provide_extern
     }
 
-    query check_well_formed(key: LocalDefId) -> () {
+    query check_well_formed(key: hir::OwnerId) -> () {
         desc { |tcx| "checking that `{}` is well-formed", tcx.def_path_str(key.to_def_id()) }
     }
 
@@ -1588,7 +1586,7 @@ rustc_queries! {
         arena_cache
         desc { "resolving lifetimes" }
     }
-    query named_region_map(_: LocalDefId) ->
+    query named_region_map(_: hir::OwnerId) ->
         Option<&'tcx FxHashMap<ItemLocalId, Region>> {
         desc { "looking up a named region" }
     }
@@ -1604,7 +1602,7 @@ rustc_queries! {
         desc { "looking up lifetime defaults for generic parameter `{}`", tcx.def_path_str(key) }
         separate_provide_extern
     }
-    query late_bound_vars_map(_: LocalDefId)
+    query late_bound_vars_map(_: hir::OwnerId)
         -> Option<&'tcx FxHashMap<ItemLocalId, Vec<ty::BoundVariableKind>>> {
         desc { "looking up late bound vars" }
     }

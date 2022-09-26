@@ -1,49 +1,75 @@
 #![feature(rustc_attrs)]
 
-#[rustc_access_level] mod outer { //~ ERROR None
-    #[rustc_access_level] pub mod inner { //~ ERROR Some(Exported)
-        #[rustc_access_level]
-        extern "C" { //~ ERROR Some(Exported)
-            #[rustc_access_level] static a: u8; //~ ERROR None
-            #[rustc_access_level] pub fn b(); //~ ERROR Some(Exported)
-        }
-        #[rustc_access_level]
-        pub trait Trait { //~ ERROR Some(Exported)
-            #[rustc_access_level] const A: i32; //~ ERROR Some(Exported)
-            #[rustc_access_level] type B; //~ ERROR Some(Exported)
+#[rustc_effective_visibility]
+mod outer { //~ ERROR Public: pub(self), Exported: pub(self), Reachable: pub(self), ReachableFromImplTrait: pub(self)
+    #[rustc_effective_visibility]
+    pub mod inner1 { //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+
+        #[rustc_effective_visibility]
+        extern "C" {} //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+
+        #[rustc_effective_visibility]
+        pub trait PubTrait { //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+            #[rustc_effective_visibility]
+            const A: i32; //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+            #[rustc_effective_visibility]
+            type B; //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
         }
 
-        #[rustc_access_level]
-        pub struct Struct { //~ ERROR Some(Exported)
-            #[rustc_access_level] a: u8, //~ ERROR None
-            #[rustc_access_level] pub b: u8, //~ ERROR Some(Exported)
+        #[rustc_effective_visibility]
+        struct PrivStruct; //~ ERROR Public: pub(self), Exported: pub(self), Reachable: pub(self), ReachableFromImplTrait: pub(self)
+
+        #[rustc_effective_visibility]
+        pub union PubUnion { //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+            #[rustc_effective_visibility]
+            a: u8, //~ ERROR Public: pub(self), Exported: pub(self), Reachable: pub(self), ReachableFromImplTrait: pub(self)
+            #[rustc_effective_visibility]
+            pub b: u8, //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
         }
 
-        #[rustc_access_level]
-        pub union Union { //~ ERROR Some(Exported)
-            #[rustc_access_level] a: u8, //~ ERROR None
-            #[rustc_access_level] pub b: u8, //~ ERROR Some(Exported)
-        }
-
-        #[rustc_access_level]
-        pub enum Enum { //~ ERROR Some(Exported)
-            #[rustc_access_level] A( //~ ERROR Some(Exported)
-                #[rustc_access_level] Struct, //~ ERROR Some(Exported)
-                #[rustc_access_level] Union,  //~ ERROR Some(Exported)
+        #[rustc_effective_visibility]
+        pub enum Enum { //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+            #[rustc_effective_visibility]
+            A( //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+                #[rustc_effective_visibility]
+                PubUnion,  //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
             ),
         }
     }
 
-    #[rustc_access_level] macro_rules! none_macro { //~ ERROR None
+    #[rustc_effective_visibility]
+    macro_rules! none_macro { //~ Public: pub(self), Exported: pub(self), Reachable: pub(self), ReachableFromImplTrait: pub(self)
         () => {};
     }
 
     #[macro_export]
-    #[rustc_access_level] macro_rules! public_macro { //~ ERROR Some(Public)
+    #[rustc_effective_visibility]
+    macro_rules! public_macro { //~ Public: pub, Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
         () => {};
+    }
+
+    #[rustc_effective_visibility]
+    pub struct ReachableStruct { //~ ERROR Public: pub(self), Exported: pub(self), Reachable: pub, ReachableFromImplTrait: pub
+        #[rustc_effective_visibility]
+        pub a: u8, //~ ERROR Public: pub(self), Exported: pub(self), Reachable: pub, ReachableFromImplTrait: pub
     }
 }
 
-pub use outer::inner;
+#[rustc_effective_visibility]
+pub use outer::inner1; //~ ERROR Public: pub, Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+
+pub fn foo() -> outer::ReachableStruct { outer::ReachableStruct {a: 0} }
+
+mod half_public_import {
+    #[rustc_effective_visibility]
+    pub type HalfPublicImport = u8; //~ ERROR Public: pub(self), Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+    #[rustc_effective_visibility]
+    #[allow(non_upper_case_globals)]
+    pub(crate) const HalfPublicImport: u8 = 0; //~ ERROR Public: pub(self), Exported: pub(self), Reachable: pub(self), ReachableFromImplTrait: pub(self)
+}
+
+#[rustc_effective_visibility]
+pub use half_public_import::HalfPublicImport; //~ ERROR Public: pub, Exported: pub, Reachable: pub, ReachableFromImplTrait: pub
+                                              //~^ ERROR Public: pub(self), Exported: pub(self), Reachable: pub(self), ReachableFromImplTrait: pub(self)
 
 fn main() {}

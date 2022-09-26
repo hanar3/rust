@@ -13,7 +13,6 @@ use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_infer::traits::Normalized;
 use rustc_middle::mir;
 use rustc_middle::ty::fold::{FallibleTypeFolder, TypeFoldable, TypeSuperFoldable};
-use rustc_middle::ty::subst::Subst;
 use rustc_middle::ty::visit::{TypeSuperVisitable, TypeVisitable};
 use rustc_middle::ty::{self, Ty, TyCtxt, TypeVisitor};
 
@@ -48,10 +47,11 @@ impl<'cx, 'tcx> AtExt<'tcx> for At<'cx, 'tcx> {
         T: TypeFoldable<'tcx>,
     {
         debug!(
-            "normalize::<{}>(value={:?}, param_env={:?})",
+            "normalize::<{}>(value={:?}, param_env={:?}, cause={:?})",
             std::any::type_name::<T>(),
             value,
             self.param_env,
+            self.cause,
         );
         if !needs_normalization(&value, self.param_env.reveal()) {
             return Ok(Normalized { value, obligations: vec![] });
@@ -198,7 +198,7 @@ impl<'cx, 'tcx> FallibleTypeFolder<'tcx> for QueryNormalizer<'cx, 'tcx> {
             // This is really important. While we *can* handle this, this has
             // severe performance implications for large opaque types with
             // late-bound regions. See `issue-88862` benchmark.
-            ty::Opaque(def_id, substs) if !substs.has_escaping_bound_vars() => {
+            ty::Opaque(def_id, substs) => {
                 // Only normalize `impl Trait` outside of type inference, usually in codegen.
                 match self.param_env.reveal() {
                     Reveal::UserFacing => ty.try_super_fold_with(self),
@@ -351,25 +351,7 @@ impl<'cx, 'tcx> FallibleTypeFolder<'tcx> for QueryNormalizer<'cx, 'tcx> {
         &mut self,
         constant: mir::ConstantKind<'tcx>,
     ) -> Result<mir::ConstantKind<'tcx>, Self::Error> {
-        Ok(match constant {
-            mir::ConstantKind::Ty(c) => {
-                let const_folded = c.try_super_fold_with(self)?;
-                match const_folded.kind() {
-                    ty::ConstKind::Value(valtree) => {
-                        let tcx = self.infcx.tcx;
-                        let ty = const_folded.ty();
-                        let const_val = tcx.valtree_to_const_val((ty, valtree));
-                        debug!(?ty, ?valtree, ?const_val);
-
-                        mir::ConstantKind::Val(const_val, ty)
-                    }
-                    _ => mir::ConstantKind::Ty(const_folded),
-                }
-            }
-            mir::ConstantKind::Val(_, _) | mir::ConstantKind::Unevaluated(..) => {
-                constant.try_super_fold_with(self)?
-            }
-        })
+        constant.try_super_fold_with(self)
     }
 
     #[inline]

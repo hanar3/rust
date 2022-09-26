@@ -1,4 +1,4 @@
-use super::diagnostics::{dummy_arg, ConsumeClosingDelim, Error};
+use super::diagnostics::{dummy_arg, ConsumeClosingDelim, Error, UseEmptyBlockNotSemi};
 use super::ty::{AllowPlus, RecoverQPath, RecoverReturnSign};
 use super::{AttrWrapper, FollowedByType, ForceCollect, Parser, PathStyle, TrailingToken};
 
@@ -664,6 +664,14 @@ impl<'a> Parser<'a> {
         mut parse_item: impl FnMut(&mut Parser<'a>) -> PResult<'a, Option<Option<T>>>,
     ) -> PResult<'a, Vec<T>> {
         let open_brace_span = self.token.span;
+
+        // Recover `impl Ty;` instead of `impl Ty {}`
+        if self.token == TokenKind::Semi {
+            self.sess.emit_err(UseEmptyBlockNotSemi { span: self.token.span });
+            self.bump();
+            return Ok(vec![]);
+        }
+
         self.expect(&token::OpenDelim(Delimiter::Brace))?;
         attrs.extend(self.parse_inner_attributes()?);
 
@@ -1305,12 +1313,19 @@ impl<'a> Parser<'a> {
         let mut generics = self.parse_generics()?;
         generics.where_clause = self.parse_where_clause()?;
 
-        let (variants, _) = self
-            .parse_delim_comma_seq(Delimiter::Brace, |p| p.parse_enum_variant())
-            .map_err(|e| {
-                self.recover_stmt();
-                e
-            })?;
+        // Possibly recover `enum Foo;` instead of `enum Foo {}`
+        let (variants, _) = if self.token == TokenKind::Semi {
+            self.sess.emit_err(UseEmptyBlockNotSemi { span: self.token.span });
+            self.bump();
+            (vec![], false)
+        } else {
+            self.parse_delim_comma_seq(Delimiter::Brace, |p| p.parse_enum_variant()).map_err(
+                |e| {
+                    self.recover_stmt();
+                    e
+                },
+            )?
+        };
 
         let enum_definition = EnumDef { variants: variants.into_iter().flatten().collect() };
         Ok((id, ItemKind::Enum(enum_definition, generics)))
@@ -1715,6 +1730,7 @@ impl<'a> Parser<'a> {
     fn parse_field_ident(&mut self, adt_ty: &str, lo: Span) -> PResult<'a, Ident> {
         let (ident, is_raw) = self.ident_or_err()?;
         if !is_raw && ident.is_reserved() {
+            let snapshot = self.create_snapshot_for_diagnostic();
             let err = if self.check_fn_front_matter(false) {
                 let inherited_vis = Visibility {
                     span: rustc_span::DUMMY_SP,
@@ -1735,6 +1751,22 @@ impl<'a> Parser<'a> {
                 err.help("unlike in C++, Java, and C#, functions are declared in `impl` blocks");
                 err.help("see https://doc.rust-lang.org/book/ch05-03-method-syntax.html for more information");
                 err
+            } else if self.eat_keyword(kw::Struct) {
+                match self.parse_item_struct() {
+                    Ok((ident, _)) => {
+                        let mut err = self.struct_span_err(
+                            lo.with_hi(ident.span.hi()),
+                            &format!("structs are not allowed in {adt_ty} definitions"),
+                        );
+                        err.help("consider creating a new `struct` definition instead of nesting");
+                        err
+                    }
+                    Err(err) => {
+                        err.cancel();
+                        self.restore_snapshot(snapshot);
+                        self.expected_ident_found()
+                    }
+                }
             } else {
                 self.expected_ident_found()
             };

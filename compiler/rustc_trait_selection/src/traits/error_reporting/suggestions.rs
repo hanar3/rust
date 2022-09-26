@@ -659,7 +659,7 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                 _ => {}
             }
 
-            hir_id = self.tcx.hir().local_def_id_to_hir_id(self.tcx.hir().get_parent_item(hir_id));
+            hir_id = self.tcx.hir().get_parent_item(hir_id).into();
         }
     }
 
@@ -2256,7 +2256,8 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
             | ObligationCauseCode::QuestionMark
             | ObligationCauseCode::CheckAssociatedTypeBounds { .. }
             | ObligationCauseCode::LetElse
-            | ObligationCauseCode::BinOp { .. } => {}
+            | ObligationCauseCode::BinOp { .. }
+            | ObligationCauseCode::AscribeUserTypeProvePredicate(..) => {}
             ObligationCauseCode::SliceOrArrayElem => {
                 err.note("slice and array elements must have `Sized` type");
             }
@@ -2711,14 +2712,15 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                     let parent_id = hir.get_parent_item(arg_hir_id);
                     let typeck_results: &TypeckResults<'tcx> = match &in_progress_typeck_results {
                         Some(t) if t.hir_owner == parent_id => t,
-                        _ => self.tcx.typeck(parent_id),
+                        _ => self.tcx.typeck(parent_id.def_id),
                     };
-                    let ty = typeck_results.expr_ty_adjusted(expr);
-                    let span = expr.peel_blocks().span;
+                    let expr = expr.peel_blocks();
+                    let ty = typeck_results.expr_ty_adjusted_opt(expr).unwrap_or(tcx.ty_error());
+                    let span = expr.span;
                     if Some(span) != err.span.primary_span() {
                         err.span_label(
                             span,
-                            &if ty.references_error() {
+                            if ty.references_error() {
                                 String::new()
                             } else {
                                 format!("this tail expression is of type `{:?}`", ty)

@@ -555,7 +555,6 @@ function loadCss(cssFileName) {
                 const code = document.createElement("h3");
                 code.innerHTML = struct[TEXT_IDX];
                 addClass(code, "code-header");
-                addClass(code, "in-band");
 
                 onEachLazy(code.getElementsByTagName("a"), elem => {
                     const href = elem.getAttribute("href");
@@ -697,20 +696,39 @@ function loadCss(cssFileName) {
         }
     }());
 
+    window.rustdoc_add_line_numbers_to_examples = () => {
+        onEachLazy(document.getElementsByClassName("rust-example-rendered"), x => {
+            const parent = x.parentNode;
+            const line_numbers = parent.querySelectorAll(".line-number");
+            if (line_numbers.length > 0) {
+                return;
+            }
+            const count = x.textContent.split("\n").length;
+            const elems = [];
+            for (let i = 0; i < count; ++i) {
+                elems.push(i + 1);
+            }
+            const node = document.createElement("pre");
+            addClass(node, "line-number");
+            node.innerHTML = elems.join("\n");
+            parent.insertBefore(node, x);
+        });
+    };
+
+    window.rustdoc_remove_line_numbers_from_examples = () => {
+        onEachLazy(document.getElementsByClassName("rust-example-rendered"), x => {
+            const parent = x.parentNode;
+            const line_numbers = parent.querySelectorAll(".line-number");
+            for (const node of line_numbers) {
+                parent.removeChild(node);
+            }
+        });
+    };
+
     (function() {
         // To avoid checking on "rustdoc-line-numbers" value on every loop...
         if (getSettingValue("line-numbers") === "true") {
-            onEachLazy(document.getElementsByClassName("rust-example-rendered"), x => {
-                const count = x.textContent.split("\n").length;
-                const elems = [];
-                for (let i = 0; i < count; ++i) {
-                    elems.push(i + 1);
-                }
-                const node = document.createElement("pre");
-                addClass(node, "line-number");
-                node.innerHTML = elems.join("\n");
-                x.parentNode.insertBefore(node, x);
-            });
+            window.rustdoc_add_line_numbers_to_examples();
         }
     }());
 

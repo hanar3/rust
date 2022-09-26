@@ -4,7 +4,7 @@ use rustc_errors::{Applicability, MultiSpan};
 use rustc_hir::{self as hir, ExprKind};
 use rustc_infer::infer::type_variable::{TypeVariableOrigin, TypeVariableOriginKind};
 use rustc_infer::traits::Obligation;
-use rustc_middle::ty::{self, Subst, ToPredicate, Ty};
+use rustc_middle::ty::{self, ToPredicate, Ty};
 use rustc_span::Span;
 use rustc_trait_selection::traits::query::evaluate_obligation::InferCtxtExt;
 use rustc_trait_selection::traits::{
@@ -140,7 +140,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     let Some(ret) = self
                         .tcx
                         .hir()
-                        .find_by_def_id(self.body_id.owner)
+                        .find_by_def_id(self.body_id.owner.def_id)
                         .and_then(|owner| owner.fn_decl())
                         .map(|decl| decl.output.span())
                     else { return; };
@@ -495,7 +495,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     .typeck_results
                     .borrow()
                     .liberated_fn_sigs()
-                    .get(hir::HirId::make_owner(self.body_id.owner))?;
+                    .get(hir::HirId::make_owner(self.body_id.owner.def_id))?;
 
                 let substs = sig.output().walk().find_map(|arg| {
                     if let ty::GenericArgKind::Type(ty) = arg.unpack()
